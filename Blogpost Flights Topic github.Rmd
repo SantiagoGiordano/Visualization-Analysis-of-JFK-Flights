@@ -1,0 +1,362 @@
+---
+title: "Effects of the Covid-19 Pandemic on Flights from JFK "
+author: "Santiago Giordano"
+date: "11/24/2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(cache=TRUE) 
+```
+
+
+```{r 1) Load pkgs and flights data, message=FALSE}
+# Pkgs
+library(pacman)
+p_load(ggplot2, dplyr, broom, readr, ggmap, jpeg, geosphere, rgeos, maps, grid, anyflights, patchwork, RColorBrewer, hrbrthemes, ggthemes, ggpubr, sandwich, stargazer)
+# Data Precovid
+nyc_precov_2019 <- read_csv("jfk flights pre covid (mar19-dec19).csv")
+precov_full_2019 <- read.csv("jfk flights 2019.csv")
+# Data Pandemic
+nyc_covid_2020 <- read_csv("jfk flights post covid (mar20-dec20).csv")
+covid_full_2020 <- read_csv("jfk flights 2020.csv")
+
+```
+
+```{r 2) a) i) setting up data for visualization of precovid, message=FALSE}
+# Load picture and render 
+earth <- readJPEG("BlackMarble_2016_01deg.jpg", native = TRUE)
+earth <- rasterGrob(earth, interpolate = TRUE)
+
+# Count how many times we have each unique connexion + order by importance
+summary_precov=nyc_precov_2019 %>% 
+  dplyr::count(origin_lat,origin_lon, origin_country, dest_lat,dest_lon,dest_country) %>%
+  arrange(n)
+
+# A function that makes a dateframe per connection (we will use these connections to plot each lines)
+data_for_connection_precov=function( origin_lon, origin_lat, dest_lon, dest_lat, group){
+  inter_precov <- gcIntermediate(c(origin_lon, origin_lat), c(dest_lon, dest_lat), n=50, addStartEnd=TRUE, breakAtDateLine=F)             
+  inter_precov=data.frame(inter_precov)
+  inter_precov$group=NA
+  diff_of_lon=abs(origin_lon) + abs(dest_lon)
+  if(diff_of_lon > 180){
+    inter_precov$group[ which(inter_precov$lon>=0)]=paste(group, "A",sep="")
+    inter_precov$group[ which(inter_precov$lon<0)]=paste(group, "B",sep="")
+  }else{
+    inter_precov$group=group
+  }
+  return(inter_precov)
+}
+
+# Create a complete dataframe w/ points for every line to be made
+data_ready_plot_precov=data.frame()
+for(i in c(1:nrow(summary_precov))){
+  tmp_precov=data_for_connection_precov(summary_precov$origin_lon[i], summary_precov$origin_lat[i], summary_precov$dest_lon[i], summary_precov$dest_lat[i] , i)
+  tmp_precov$origin_country=summary_precov$origin_country[i]
+  tmp_precov$n=summary_precov$n[i]
+  data_ready_plot_precov=rbind(data_ready_plot_precov, tmp_precov)
+}
+```
+```{r 2) a) ii) Plot precovid visualization, message=FALSE, warning=FALSE, warning=FALSE}
+precov_viz <- ggplot() +
+  annotation_custom(earth, xmin = -180, xmax = 180, ymin = -90, ymax = 90) +
+  geom_line(data=data_ready_plot_precov, aes(x=lon, y=lat, group=group, colour= "red", alpha=n), size=0.6) +
+  scale_color_brewer(palette="Set3") +
+  theme_void() +
+  theme(
+    legend.position="none",
+    panel.background = element_rect(fill = "black", colour = "black"), 
+    panel.spacing=unit(c(0,0,0,0), "null"),
+    plot.margin=grid::unit(c(0,0,0,0), "cm"),
+  ) +
+  ggplot2::annotate("text", x = -150, y = 15, hjust = 0, size = 8, label = paste("Flights from JFK - Before the Pandemic"), color = "white") +
+  ggplot2::annotate("text", x = -150, y = 11, hjust = 0, size = 4, label = paste("Mar - Dec 2019 | Background image source: NASA.gov"), color = "white", alpha = 0.5) +
+  #ggplot2::annotate("text", x = 160, y = -51, hjust = 1, size = 7, label = paste("Cacedédi Air-Guimzu 2018"), color = "white", alpha = 0.5) +
+  xlim(-175,-40) +
+  ylim(5,52) +
+  scale_x_continuous(expand = c(0.006, 0.006)) +
+  coord_equal() 
+precov_viz
+```
+
+Back in the early months of 2020, when many of us found ourselves in 'lockdown' due to the novel coronavirus, the prospect of a pandemic that would last beyond the summer was a frightening thought. We all hoped it would subside quickly but this was probably wishful thinking. An industry that certainly shared our anxieties regarding the effects of the Covid-19 pandemic was the aviation industry. Facing these lockdowns all over the globe and myriad travel restrictions, where flights were still allowed, airlines saw their traffic drop precipitously starting in March of 2020. In this blogpost I would like to explore some these consequences, specifically on flights and airport traffic. I will look at flight data from John F. Kennedy International Airport (JFK) in New York City. The data was sourced from the `anyflights` package in R, which itself sources from the Bureau of Transportation Statistics website, and it includes all domestic departures from JFK during 2019 and 2020.  
+
+With an event as consequential as the pandemic, we certainly expect drastic changes in flight patterns overall. The question, however, is not whether changes took place but rather what kind. A good starting point is to graph flight routes throughout the United States both before the pandemic and after its onset. I decided to define this latter period as starting on March 13th of 2020 (the date when a national emergency concerning the outbreak was declared in the US) and it extends up to the end of 2020. Conversely, the pre-pandemic period is defined as the same range in months and days but during 2019 (i.e., March thorough December). With these time periods, we can compare flight patterns in the midst of the pandemic with an equivalent time period before its onset. The visualization above represents all flight routes departing from JFK in the pre-pandemic period, where the thicker lines represent routes with higher frequencies. And the figure below shows all flights that departed during the pandemic. 
+
+```{r 2) b) i) Setting up data for viz of pandemic, message=FALSE}
+# Load picture and render 
+earth <- readJPEG("BlackMarble_2016_01deg.jpg", native = TRUE)
+earth <- rasterGrob(earth, interpolate = TRUE)
+
+# Count how many times we have each unique connexion + order by importance
+summary_covid=nyc_covid_2020 %>% 
+  dplyr::count(origin_lat,origin_lon, origin_country, dest_lat,dest_lon,dest_country) %>%
+  arrange(n)
+
+# A function that makes a dateframe per connection (we will use these connections to plot each lines)
+data_for_connection_covid=function( origin_lon, origin_lat, dest_lon, dest_lat, group){
+  inter_covid <- gcIntermediate(c(origin_lon, origin_lat), c(dest_lon, dest_lat), n=50, addStartEnd=TRUE, breakAtDateLine=F)             
+  inter_covid=data.frame(inter_covid)
+  inter_covid$group=NA
+  diff_of_lon=abs(origin_lon) + abs(dest_lon)
+  if(diff_of_lon > 180){
+    inter_covid$group[ which(inter_covid$lon>=0)]=paste(group, "A",sep="")
+    inter_covid$group[ which(inter_covid$lon<0)]=paste(group, "B",sep="")
+  }else{
+    inter_covid$group=group
+  }
+  return(inter_covid)
+}
+
+
+# Create a complete dataframe w/ points for every line to be made
+data_ready_plot_covid=data.frame()
+for(i in c(1:nrow(summary_covid))){
+  tmp_covid=data_for_connection_covid(summary_covid$origin_lon[i], summary_covid$origin_lat[i], summary_covid$dest_lon[i], summary_covid$dest_lat[i] , i)
+  tmp_covid$origin_country=summary_covid$origin_country[i]
+  tmp_covid$n=summary_covid$n[i]
+  data_ready_plot_covid=rbind(data_ready_plot_covid, tmp_covid)
+}
+
+```
+```{r 2) b) ii) Plotting pandemic viz, message=FALSE, warning=FALSE}
+covid_viz <- ggplot() +
+  annotation_custom(earth, xmin = -180, xmax = 180, ymin = -90, ymax = 90) +
+  geom_line(data=data_ready_plot_covid, aes(x=lon, y=lat, group=group, colour= "red", alpha=n), size=0.6) +
+  scale_color_brewer(palette="Set3") +
+  theme_void() +
+  theme(
+    legend.position="none",
+    panel.background = element_rect(fill = "black", colour = "black"), 
+    panel.spacing=unit(c(0,0,0,0), "null"),
+    plot.margin=grid::unit(c(0,0,0,0), "cm"),
+  ) +
+  ggplot2::annotate("text", x = -150, y = 15, hjust = 0, size = 8, label = paste("Flights from JFK - During the Pandemic"), color = "white") +
+  ggplot2::annotate("text", x = -150, y = 11, hjust = 0, size = 4, label = paste("Mar - Dec 2020 | Background image source: NASA.gov"), color = "white", alpha = 0.5) +
+  #ggplot2::annotate("text", x = 160, y = -51, hjust = 1, size = 7, label = paste("Cacedédi Air-Guimzu 2018"), color = "white", alpha = 0.5) +
+  xlim(-175,-40) +
+  ylim(5,52) +
+  scale_x_continuous(expand = c(0.006, 0.006)) +
+  coord_equal() 
+covid_viz
+```
+
+A first impression may be these visualizations look oddly similar. However, these figures convey two trends. The first is flight routes remained virtually unchanged - two routes were actually added during the pandemic. Second, the proportion of flights per route remained relatively the same during both periods. Since the thickness of the lines is representative of the frequency of flights within the same period (i.e., pre-pandemic or during), we can tell which routes had the highest and lowest frequencies in each period but we cannot tell how these frequencies changed. For example, we can see that the route to Los Angeles had a higher frequency than the route to New Orleans, both before and during the pandemic, but we cannot infer how the number of flights to each destination changed with the onset of the virus. This exemplifies one of the main shortfalls of this type of visualization, which is visually appealing and good for storytelling but is not as well suited to show precise empirical details about the data.
+
+To visualize the variations in flights we can look instead at the following line graph, where we compare the number of departures per month during 2019 and 2020:
+
+```{r patchwork... RIP, include=FALSE}
+(precov_viz / covid_viz) + plot_annotation( title = "Comparison of Flight Routes from JFK", caption = "Background image source: NASA.gov")
+```
+
+```{r 3) a) Cleaning data for Linegraph}
+# For 2019: Create data set with a variable for month and a variable for number of flights per month
+  # Count number of times each month number shows up
+linegraph_2019 <- precov_full_2019 %>% arrange(month) %>% count(month)
+  # Create another variable for month, where values are month names instead of numbers
+linegraph_2019 <- linegraph_2019 %>% mutate(
+  month_wd = recode(month, '1' = 'Jan', '2' = 'Feb', '3' = 'Mar', '4' = 'Apr', '5' = 'May', '6' = 'Jun',
+                    '7' = 'Jul', '8' = 'Aug', '9' = 'Nov', '10' = 'Oct', '11' = 'Nov', '12' = 'Dec'))
+  # Rename some of these variables because R was misbehaving
+linegraph_2019 <- rename(linegraph_2019, month_19 = month, n_flights_19 = n)
+  # Recreate dataset with months, n of flights per month and add a variable for the year
+linegraph_2019_2 <- precov_full_2019 %>% arrange(month) %>% count(month)
+linegraph_2019_2$year <- 2019
+
+
+# For 2020: Create data set with a variable for month and a variable for number of flights per month
+  # Count number of times each month number shows up
+linegraph_2020 <- covid_full_2020 %>% arrange(month) %>% count(month)
+linegraph_2020 <- linegraph_2020 %>% mutate(
+  month_wd = recode(month, '1' = 'Jan', '2' = 'Feb', '3' = 'Mar', '4' = 'Apr', '5' = 'May', '6' = 'Jun',
+                    '7' = 'Jul', '8' = 'Aug', '9' = 'Nov', '10' = 'Oct', '11' = 'Nov', '12' = 'Dec'))
+  # Rename some of the variables
+linegraph_2020 <- rename(linegraph_2020, month_20 = month, n_flights_20 = n)
+  # Recreate dataset with months, n of flights per month and add a variable for the year
+linegraph_2020_2 <- covid_full_2020 %>% arrange(month) %>% count(month)
+linegraph_2020_2$year <- 2020
+
+
+# Bind 2019 and 2020 data
+linegraph_data <- rbind(linegraph_2019_2, linegraph_2020_2)
+  # Convert year and month variables into factors
+linegraph_data$year <- as.factor(linegraph_data$year)
+linegraph_data$month <- as.factor(linegraph_data$month)
+#linegraph_data$year <- as.character.Date(linegraph_data)
+
+```
+
+```{r 3) b) line graph of flights per month, warning=FALSE}
+ggplot() + geom_line(data = linegraph_data, aes(x=month, y=n, group = year, color = year)) + 
+  geom_vline(xintercept = 3.4, linetype = 'dashed') +
+  labs(title = "Flights per Month Comparison", x = "Month", y = "Number of Flights", color = "Year", 
+       caption = "*Dashed line marks declaration of emergency on March 13th, 2020") + 
+  scale_x_discrete('Month', labels = c(
+  '1' = 'Jan', '2' = 'Feb', '3' = 'Mar', '4' = 'Apr', '5' = 'May', '6' = 'Jun','7' = 'Jul', '8' = 'Aug', 
+  '9' = 'Nov', '10' = 'Oct', '11' = 'Nov', '12' = 'Dec')) +
+  scale_color_ptol() +
+  theme_economist() +
+  theme(#text = element_text('Avenir Next Condensed'),
+        #axis.title = element_text('Avenir Next Condensed'), 
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = 2), 
+        plot.caption = element_text(vjust = -4, hjust = 1, size = 8, face = 'italic'),
+        legend.position = "right",
+        legend.text = element_text(size = 8)
+        )
+
+``` 
+  
+  
+We see that during 2019, the number of flights per month remained relatively stable, hovering between 9,000 and 10,000 monthly departures. The first two months of 2020 show a similar trend, with a slight dip in the number of flights in February due to the end of the holiday season. Starting in March of 2020, however, we see a stark drop caused by the pandemic. The monthly departures during the pandemic are reduced to about one third of the pre-pandemic levels, with April and May showing the largest decreases. The following bar chart displays the same trend: 
+   
+
+```{r 4) Bar chart of flight frequency per month}
+# Convert year variable in full data for pre covid and during covid to factors
+precov_full_2019$year <- as.factor(precov_full_2019$year)
+covid_full_2020$year <- as.factor(covid_full_2020$year)
+# Bind 2019 full data (pre-covid) with 2020 (during covid) data
+nyc_both_periods <- rbind(precov_full_2019, covid_full_2020)
+# Convert month variable into factor
+nyc_both_periods$month <- as.factor(nyc_both_periods$month)
+
+# Bar plot of flights per month
+brks <- c(0, 0.25, 0.5, 0.75, 1)
+ggplot(nyc_both_periods) + geom_bar(aes(x=month, fill = year),  position = 'dodge') + 
+  labs(title = "Flights per Month Comparison", x = "Month", y = "Number of Flights", color = "Year", fill = 'Year') +
+  scale_x_discrete('Month', labels = c(
+  '1' = 'Jan', '2' = 'Feb', '3' = 'Mar', '4' = 'Apr', '5' = 'May', '6' = 'Jun','7' = 'Jul', '8' = 'Aug', 
+  '9' = 'Nov', '10' = 'Oct', '11' = 'Nov', '12' = 'Dec')) +
+  scale_fill_ptol() + #c("2019" = "#aa004f", "2020" = "#f2b880") ptol, brewer
+  #scale_fill_hue(c=45, l=80) +
+  theme_economist() +
+  theme(#text = element_text('Avenir Next Condensed'),
+        #axis.title = element_text('Avenir Next Condensed'), 
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = 2), 
+        plot.caption = element_text(vjust = -4, hjust = 1, size = 8, face = 'italic'),
+        legend.position = "right",
+        legend.text = element_text(size = 8)
+        )
+
+```
+
+```{r Unused jitter:flights per month to each dest, include=FALSE}
+# Group by month and count flights to each destination(table: shows number of flights p/ month to e/ dest); add year var
+dest_flights_permonth_2019 <- precov_full_2019 %>% group_by(month) %>% count(dest)
+dest_flights_permonth_2019$year <- 2019
+# For covid: Group by month and count flights to each destination(table: shows number of flights p/ month to e/ dest); add year var
+dest_flights_permonth_2020 <- covid_full_2020 %>% group_by(month) %>% count(dest)
+dest_flights_permonth_2020$year <- 2020
+# Bind pre and post covid data
+dest_fts_permonth_data <- rbind(dest_flights_permonth_2019, dest_flights_permonth_2020)
+# Teurn year and month data into factors
+dest_fts_permonth_data$year <- as.factor(dest_fts_permonth_data$year)
+dest_fts_permonth_data$month <- as.factor(dest_fts_permonth_data$month)
+
+# Jitter
+ggplot(dest_fts_permonth_data) + 
+  geom_jitter(aes(x = month, y = n), width = 0.2) + 
+  #ggrepel::geom_text_repel(dest_fts_permonth_data %>% filter(n > 150) %>% sample_n(15), aes(label = n)) +
+  facet_wrap(~year) +
+  labs(title = "Numer of flights to Each Desination", x = "Month", y = "Flights p/ Month to Destinations") + 
+  theme_economist()
+```
+
+To explore some of the impacts on consumers, we can look at the changes in departure delays associated with the pandemic. The scatter plot below graphs the average departure delay in minutes for each month, and we can compare the averages of 2020 with those of 2019 to measure how delays fluctuated. Additionally, we can run a regression to get an estimate of the effect on delays associated with the virus. 
+
+```{r 5) Jitter for departure delays per month, warning=FALSE}
+# Turing var of month in linegraph data into factors
+linegraph_2019_2$month <- as.factor(linegraph_2019_2$month)
+#Turning var of month in both periods binded data into factors
+nyc_both_periods$month <- as.factor(nyc_both_periods$month)
+
+# Bind 2019 and 2020 data (FULL YEAR data)
+nyc_fulldata_19and20 <- rbind(precov_full_2019, covid_full_2020)
+# Old jitter graph
+#jitter_dep_delays <- ggplot(nyc_fulldata_19and20) + 
+ # geom_jitter(aes(x = month, y = log(dep_delay)), width = 0.2) +
+  #stat_summary(aes(x = month, y = log(dep_delay)), fun = mean, color = "red", size = 3, geom = "point") + 
+  #facet_wrap(~year) +
+  #labs(title = "Comparison of Flights Delays", x = "Month", y = "Departure Delays (Min)")
+#jitter_dep_delays
+
+#New scatter : sugerido x el profe
+ggplot(nyc_fulldata_19and20) + geom_point(
+  aes(x = factor(month), y = dep_delay, color = factor(year)), size = 3, stat = "summary",
+    fun = "mean") + 
+  #scale_color_hue(c=45, l=80) +
+  scale_color_ptol() +
+  labs(title = "Average Departure Delays", x = "Month", y = "Departure Delays (Min)", color = "Year") + 
+  scale_x_discrete('Month', labels = c(
+  '1' = 'Jan', '2' = 'Feb', '3' = 'Mar', '4' = 'Apr', '5' = 'May', '6' = 'Jun','7' = 'Jul', '8' = 'Aug', 
+  '9' = 'Nov', '10' = 'Oct', '11' = 'Nov', '12' = 'Dec')) +
+  theme_economist() +
+  theme(#text = element_text('Avenir Next Condensed'),
+        #axis.title = element_text('Avenir Next Condensed'), 
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = 2), 
+        plot.caption = element_text(vjust = -4, hjust = 1, size = 8, face = 'italic'),
+        legend.position = "right",
+        legend.text = element_text(size = 9)
+        )
+
+
+# Summary stats for jitter
+##make summary stats and print in table?
+
+
+
+```
+ 
+
+```{r 6) Regression of delays on covid dummy, warning=FALSE, echo=FALSE}
+# add covid dummy
+nyc_fulldata_19and20 <- nyc_fulldata_19and20 %>% mutate(covid_dum = ifelse(year == 2020 & month > 2, 1, 0))
+
+# Reg dep_delays on covid dummy
+reg_delays_on_covid <- lm(dep_delay ~ covid_dum, data = nyc_fulldata_19and20)
+# Pull HR SEs
+hrse <- sqrt(diag(vcovHC(reg_delays_on_covid, type="HC1")))
+# Table
+stargazer(reg_delays_on_covid, se = list(hrse), type = 'text', 
+          dep.var.labels = "Departure Delays", covariate.labels = c("Pandemic Flights", "Non-Pandemic Flights"),
+          style = 'qje', keep.stat = c("n", "rsq"), model.numbers = FALSE)
+
+
+# Means of dep delay
+#mean(na.rm = TRUE, nyc_fulldata_19and20$dep_delay[nyc_fulldata_19and20$covid_dum==0])
+#mean(na.rm = TRUE, nyc_fulldata_19and20$dep_delay[nyc_fulldata_19and20$covid_dum==1])
+
+```
+  
+    
+      
+  
+  
+In the scatter plot we see a clear drop in delays during the pandemic, on average. For the first half of 2019, flights departed JFK with delays hovering around ten to fifteen minutes, whereas during 2020 the average delays were close to zero. In fact, after the month of March, the average delay was negative, meaning the actual departure time was earlier than the scheduled time. We see this trend persist throughout most of 2020, with a slight increase in delays during the summer months and as the winter holiday season approached as well. In 2019, the rise in delays during summer is significantly sharper, with delay times more than doubling from May to August. When looking at the regression, we find its results support this trend. The coefficient for the non-pandemic flights, 11.5, indicates that flights departing JFK airport before the pandemic had an average delay of eleven and a half minutes. Conversely, the regression coefficient for flights departing during the pandemic indicates they were associated with delays eleven minutes shorter, on average. In other words, flights departing after March 13th of 2020 had an average delay of about 0.05 minutes - in essence, there was no delay. An important caveat are some possible shortfalls of the regression. The pandemic is not the only factor affecting flight departure times, but due to limitations in the available data used for the analysis, I decided to keep the regression simple. Thus, we cannot use this regression to draw direct causal effects but rather it serves as part of the evidence supporting the overall trends shown by the data. 
+  
+    
+    
+One of the aspects aspects of the Covid-19 pandemic that makes it so unique and unprecedented was its scope - virtually everyone around the globe felt its effects, and the air travel industry was no exception. While the initial blow to the industry might have lessened as travel restrictions were lifted, the effects of the pandemic, both on airlines and travelers, will resonate for years to come. Our preliminary analysis of flight data shows travel conditions for consumers saw some type of improvement through reduced delays. Whether this trend is foreshadowing changes to come or whether it is purely caused by the reduced air traffic is to be seen - for now, we can say that it is the time for delay-averse travelers to enjoy flying.
+
+
+
+
+```{r Unused linegraph, include=FALSE, eval=FALSE, echo=FALSE}
+# Linegraph with one geom line for each period
+ggplot() + geom_line(data=linegraph_2019 ,aes(x=month_19, y=n_flights_19), color = "darkgreen") + 
+  geom_line(data=linegraph_2020, aes(x=month_20, y=n_flights_20), color = "red") + 
+  geom_vline(aes(x=month_19), xintercept = 3.4, linetype = 'dashed') +
+  labs(title = "Flights per Month Comparison", x = "Month", y = "Number of Flights", 
+       caption = "*Dashed line marks declaration of emergency on March 13th, 2020")+ 
+  scale_color_brewer() + scale_x_continuous(breaks = pretty(linegraph_2019$month_19, 12)) +
+  theme_economist() +
+  theme(axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = 2), 
+        plot.caption = element_text(vjust = -4, hjust = 1, size = 8)
+        )
+
+```
+

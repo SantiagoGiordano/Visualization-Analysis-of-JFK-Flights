@@ -16,8 +16,18 @@ knitr::opts_chunk$set(cache=TRUE)
 library(pacman)
 p_load(ggplot2, dplyr, broom, readr, ggmap, jpeg, geosphere, rgeos, maps, grid, anyflights, patchwork, RColorBrewer, hrbrthemes, ggthemes, ggpubr, sandwich, stargazer)
 # Data Precovid
+  # Mar-Dec 2019
 nyc_precov_2019 <- read_csv("jfk flights pre covid (mar19-dec19).csv")
-precov_full_2019 <- read.csv("jfk flights 2019.csv")
+  # Full 2019
+    # Load First half of data and second half
+split1 <- read_csv("jfk flights 2019 split1.csv")
+split2 <- read_csv("jfk flights 2019 split2.csv")
+    # Bind halves to form full 2019 data
+precov_full_2019 <- rbind(split1, split2)
+        # Get rid of first column
+precov_full_2019 <- precov_full_2019 %>% select(year:dest_country)
+
+
 # Data Pandemic
 nyc_covid_2020 <- read_csv("jfk flights post covid (mar20-dec20).csv")
 covid_full_2020 <- read_csv("jfk flights 2020.csv")

@@ -5,18 +5,16 @@ output: github_document
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 ```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+knitr::opts_chunk$set(echo=FALSE)
 ```
 
-# JFK-Flights
+# JFK Flights
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-Where do flights departing from JFK fly to?
+Where do flights departing from JFK airport fly to?
 
 
 ```{r pkgs}
@@ -25,7 +23,7 @@ library(pacman)
 p_load(ggplot2, dplyr, broom, readr, ggmap, jpeg, geosphere, rgeos, maps, grid, anyflights, patchwork, RColorBrewer, hrbrthemes, ggthemes, ggpubr, sandwich, stargazer)
 ```
 
-```{r data}
+```{r data, message=FALSE}
 # Data Precovid
   # Mar-Dec 2019
 nyc_precov_2019 <- read_csv("Data/jfk flights pre covid (mar19-dec19).csv")

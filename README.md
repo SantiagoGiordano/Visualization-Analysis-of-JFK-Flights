@@ -1,1 +1,140 @@
-# Visualization-Analysis-of-JFK-Flights
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+# JFK-Flights
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+Where do flights departing from JFK fly to?
+
+``` r
+# Pkgs
+library(pacman)
+p_load(ggplot2, dplyr, broom, readr, ggmap, jpeg, geosphere, rgeos, maps, grid, anyflights, patchwork, RColorBrewer, hrbrthemes, ggthemes, ggpubr, sandwich, stargazer)
+```
+
+``` r
+# Data Precovid
+  # Mar-Dec 2019
+nyc_precov_2019 <- read_csv("Data/jfk flights pre covid (mar19-dec19).csv")
+#> Rows: 99251 Columns: 27
+#> ── Column specification ────────────────────────────────────────────────────────
+#> Delimiter: ","
+#> chr   (8): origin, dest, name, carrier, tailnum, tzone, origin_country, dest...
+#> dbl  (18): year, origin_lat, origin_lon, dest_lat, dest_lon, month, day, dep...
+#> dttm  (1): time_hour
+#> 
+#> ℹ Use `spec()` to retrieve the full column specification for this data.
+#> ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+  # Full 2019
+    # Load First half of data and second half
+split1 <- read_csv("Data/jfk flights 2019 split1.csv")
+#> New names:
+#> Rows: 61491 Columns: 28
+#> ── Column specification
+#> ──────────────────────────────────────────────────────── Delimiter: "," chr
+#> (8): origin, dest, name, carrier, tailnum, tzone, origin_country, dest... dbl
+#> (19): ...1, year, origin_lat, origin_lon, dest_lat, dest_lon, month, da... dttm
+#> (1): time_hour
+#> ℹ Use `spec()` to retrieve the full column specification for this data. ℹ
+#> Specify the column types or set `show_col_types = FALSE` to quiet this message.
+#> • `` -> `...1`
+split2 <- read_csv("Data/jfk flights 2019 split2.csv")
+#> New names:
+#> Rows: 61490 Columns: 28
+#> ── Column specification
+#> ──────────────────────────────────────────────────────── Delimiter: "," chr
+#> (8): origin, dest, name, carrier, tailnum, tzone, origin_country, dest... dbl
+#> (19): ...1, year, origin_lat, origin_lon, dest_lat, dest_lon, month, da... dttm
+#> (1): time_hour
+#> ℹ Use `spec()` to retrieve the full column specification for this data. ℹ
+#> Specify the column types or set `show_col_types = FALSE` to quiet this message.
+#> • `` -> `...1`
+    # Bind halves to form full 2019 data
+precov_full_2019 <- rbind(split1, split2)
+        # Get rid of first column
+precov_full_2019 <- precov_full_2019 %>% select(year:dest_country)
+
+
+# Data Pandemic
+nyc_covid_2020 <- read_csv("Data/jfk flights post covid (mar20-dec20).csv")
+#> Rows: 31321 Columns: 27
+#> ── Column specification ────────────────────────────────────────────────────────
+#> Delimiter: ","
+#> chr   (8): origin, dest, name, carrier, tailnum, tzone, origin_country, dest...
+#> dbl  (18): origin_lat, origin_lon, dest_lat, dest_lon, year, month, day, dep...
+#> dttm  (1): time_hour
+#> 
+#> ℹ Use `spec()` to retrieve the full column specification for this data.
+#> ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+covid_full_2020 <- read_csv("Data/jfk flights 2020.csv")
+#> Rows: 54684 Columns: 27
+#> ── Column specification ────────────────────────────────────────────────────────
+#> Delimiter: ","
+#> chr   (8): origin, dest, name, carrier, tailnum, tzone, origin_country, dest...
+#> dbl  (18): origin_lat, origin_lon, dest_lat, dest_lon, year, month, day, dep...
+#> dttm  (1): time_hour
+#> 
+#> ℹ Use `spec()` to retrieve the full column specification for this data.
+#> ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+```
+
+``` r
+# Load picture and render 
+earth <- readJPEG("Files/BlackMarble_2016_01deg.jpg", native = TRUE)
+earth <- rasterGrob(earth, interpolate = TRUE)
+
+# Count how many times we have each unique connexion + order by importance
+summary_precov=nyc_precov_2019 %>% 
+  dplyr::count(origin_lat,origin_lon, origin_country, dest_lat,dest_lon,dest_country) %>%
+  arrange(n)
+
+# A function that makes a dateframe per connection (we will use these connections to plot each lines)
+data_for_connection_precov=function( origin_lon, origin_lat, dest_lon, dest_lat, group){
+  inter_precov <- gcIntermediate(c(origin_lon, origin_lat), c(dest_lon, dest_lat), n=50, addStartEnd=TRUE, breakAtDateLine=F)             
+  inter_precov=data.frame(inter_precov)
+  inter_precov$group=NA
+  diff_of_lon=abs(origin_lon) + abs(dest_lon)
+  if(diff_of_lon > 180){
+    inter_precov$group[ which(inter_precov$lon>=0)]=paste(group, "A",sep="")
+    inter_precov$group[ which(inter_precov$lon<0)]=paste(group, "B",sep="")
+  }else{
+    inter_precov$group=group
+  }
+  return(inter_precov)
+}
+
+# Create a complete dataframe w/ points for every line to be made
+data_ready_plot_precov=data.frame()
+for(i in c(1:nrow(summary_precov))){
+  tmp_precov=data_for_connection_precov(summary_precov$origin_lon[i], summary_precov$origin_lat[i], summary_precov$dest_lon[i], summary_precov$dest_lat[i] , i)
+  tmp_precov$origin_country=summary_precov$origin_country[i]
+  tmp_precov$n=summary_precov$n[i]
+  data_ready_plot_precov=rbind(data_ready_plot_precov, tmp_precov)
+}
+```
+
+``` r
+ggplot() +
+  annotation_custom(earth, xmin = -180, xmax = 180, ymin = -90, ymax = 90) +
+  geom_line(data=data_ready_plot_precov, 
+            aes(x=lon, y=lat, group=group, colour= "red", alpha=n), size=0.6) +
+  scale_color_brewer(palette="Set3") +
+  theme_void() +
+  theme(
+    legend.position="none",
+    panel.background = element_rect(fill = "black", colour = "black"), 
+    panel.spacing=unit(c(0,0,0,0), "null"),
+    plot.margin=grid::unit(c(0,0,0,0), "cm"),
+  ) +
+  ggplot2::annotate("text", x = -150, y = 15, hjust = 0, size = 8, label = paste("Flights from JFK - Before the Pandemic"), color = "white") +
+  ggplot2::annotate("text", x = -150, y = 11, hjust = 0, size = 4, label = paste("Mar - Dec 2019 | Background image source: NASA.gov"), color = "white", alpha = 0.5) +
+  #ggplot2::annotate("text", x = 160, y = -51, hjust = 1, size = 7, label = paste("Cacedédi Air-Guimzu 2018"), color = "white", alpha = 0.5) +
+  xlim(-175,-40) +
+  ylim(5,52) +
+  scale_x_continuous(expand = c(0.006, 0.006)) +
+  coord_equal() 
+```
+
+![](README_files/figure-gfm/precovid-fig-1.png)<!-- -->
